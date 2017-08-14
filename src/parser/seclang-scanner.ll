@@ -321,6 +321,7 @@ DICT_ELEMENT_WITH_PIPE                  [^ \t"]+
 
 
 DICT_ELEMENT_TWO                        [^\"\=]+
+DICT_ELEMENT_TWO_QUOTED                 ([^\"\=\'\\]|(\\\\)|(\\\'))+
 DICT_ELEMENT_TWO2                        [A-Za-z_ -\%\{\.\}\-\/]+
 DIRECTIVE                               (?i:SecRule)
 DIRECTIVE_SECRULESCRIPT                 (?i:SecRuleScript)
@@ -363,8 +364,13 @@ EQUALS_MINUS                            (?i:=\-)
 %x LEXING_ERROR
 %x LEXING_ERROR_ACTION
 %x SETVAR_ACTION_WAITING_VARIABLE
+%x SETVAR_ACTION_QUOTED_WAITING_VARIABLE_ESCAPED
 %x SETVAR_ACTION_WAITING_OPERATION
 %x SETVAR_ACTION_WAITING_CONTENT
+%x SETVAR_ACTION_QUOTED_WAITING_VARIABLE
+%x SETVAR_ACTION_QUOTED_WAITING_OPERATION
+%x SETVAR_ACTION_QUOTED_WAITING_CONTENT
+%x SETVAR_ACTION_QUOTED_WAITING_CLOSING_QUOTE
 
 %{
   // Code run each time a pattern is matched.
@@ -504,7 +510,7 @@ EQUALS_MINUS                            (?i:=\-)
 }
 
 <SETVAR_ACTION_WAITING_VARIABLE>{
-\'*                                                                {  }
+\'                                                                 { BEGIN(SETVAR_ACTION_QUOTED_WAITING_VARIABLE); }
 \"*                                                                {  }
 {NOT}                                                              { return p::make_NOT(*driver.loc.back()); }
 {VARIABLE_TX}(\:[\']{DICT_ELEMENT_TWO}[\'])?                       { BEGIN(SETVAR_ACTION_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
@@ -536,8 +542,26 @@ EQUALS_MINUS                            (?i:=\-)
 [ \t]*\\\r\n[ \t]*                                                 { driver.loc.back()->lines(1); driver.loc.back()->step(); }
 }
 
-
-
+<SETVAR_ACTION_QUOTED_WAITING_VARIABLE>{
+\'                                                                 { BEGIN(EXPECTING_ACTIONS); }
+\"*                                                                { }
+{NOT}                                                              { return p::make_NOT(*driver.loc.back()); }
+{VARIABLE_TX}(\:{DICT_ELEMENT_TWO_QUOTED})?                        { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_TX}(\.{DICT_ELEMENT_TWO_QUOTED})?                        { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_SESSION}(\:{DICT_ELEMENT_TWO_QUOTED})?                   { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_SESSION}(\.{DICT_ELEMENT_TWO_QUOTED})?                   { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_RESOURCE}(\:{DICT_ELEMENT_TWO_QUOTED})?                  { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_RESOURCE}(\.{DICT_ELEMENT_TWO_QUOTED})?                  { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_IP}(\:{DICT_ELEMENT_TWO_QUOTED})?                        { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_IP}(\.{DICT_ELEMENT_TWO_QUOTED})?                        { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_USER}(\:{DICT_ELEMENT_TWO_QUOTED})?                      { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_USER}(\.{DICT_ELEMENT_TWO_QUOTED})?                      { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_GLOBAL}(\:{DICT_ELEMENT_TWO_QUOTED})?                    { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+{VARIABLE_GLOBAL}(\.{DICT_ELEMENT_TWO_QUOTED})?                    { BEGIN(SETVAR_ACTION_QUOTED_WAITING_OPERATION); return p::make_VARIABLE(yytext, *driver.loc.back()); }
+.                                                                  { BEGIN(LEXING_ERROR_ACTION); yyless(0); }
+[ \t]*\\\n[ \t]*                                                   { driver.loc.back()->lines(1); driver.loc.back()->step(); }
+[ \t]*\\\r\n[ \t]*                                                 { driver.loc.back()->lines(1); driver.loc.back()->step(); }
+}
 
 <SETVAR_ACTION_WAITING_OPERATION>{
 [ \t]*\n                { BEGIN(INITIAL); yyless(1); }
@@ -554,8 +578,33 @@ EQUALS_MINUS                            (?i:=\-)
 .                       { BEGIN(LEXING_ERROR_ACTION); yyless(0); }
 }
 
+<SETVAR_ACTION_QUOTED_WAITING_OPERATION>{
+[ \t]*\n                { BEGIN(INITIAL); yyless(1); }
+[ \t]*\r\n              { BEGIN(INITIAL); driver.loc.back()->lines(1); driver.loc.back()->step(); }
+[ \t]*\\\n              { }
+[ \t]*\\\r\n            { }
+[ \t]*\n                { BEGIN(EXPECTING_ACTIONS); yyless(yyleng); driver.loc.back()->lines(1); driver.loc.back()->step(); }
+[ \t]*\r\n              { BEGIN(EXPECTING_ACTIONS); yyless(yyleng); driver.loc.back()->lines(1); driver.loc.back()->step(); }
+[ \t]*\"[ \t]*          { }
+\"[ \t]*\n              { BEGIN(EXPECTING_ACTIONS); yyless(1); }
+\"[ \t]*\r\n            { BEGIN(EXPECTING_ACTIONS); driver.loc.back()->lines(1); driver.loc.back()->step(); }
+{EQUALS_PLUS}           { BEGIN(SETVAR_ACTION_QUOTED_WAITING_CONTENT); return p::make_SETVAR_OPERATION_EQUALS_PLUS(*driver.loc.back()); }
+{EQUALS_MINUS}          { BEGIN(SETVAR_ACTION_QUOTED_WAITING_CONTENT); return p::make_SETVAR_OPERATION_EQUALS_MINUS(*driver.loc.back()); }
+{EQUALS}                { BEGIN(SETVAR_ACTION_QUOTED_WAITING_CONTENT); return p::make_SETVAR_OPERATION_EQUALS(*driver.loc.back()); }
+.                       { BEGIN(LEXING_ERROR_ACTION); yyless(0); }
+}
+
 <SETVAR_ACTION_WAITING_CONTENT>{
 [^,"\n]+                { BEGIN(EXPECTING_ACTIONS); return p::make_FREE_TEXT(yytext, *driver.loc.back()); }
+}
+
+<SETVAR_ACTION_QUOTED_WAITING_CONTENT>{
+([^"\n\\\']|(\\\\)|(\\\')|(\\\n))*/\'                  { BEGIN(SETVAR_ACTION_QUOTED_WAITING_CLOSING_QUOTE); return p::make_FREE_TEXT(yytext, *driver.loc.back()); }
+.                                                      { BEGIN(LEXING_ERROR_ACTION); yyless(0); }
+}
+
+<SETVAR_ACTION_QUOTED_WAITING_CLOSING_QUOTE>{
+\'                                                     { BEGIN(EXPECTING_ACTIONS); }
 }
 
 <FINISH_ACTIONS>{
