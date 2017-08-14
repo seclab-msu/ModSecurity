@@ -365,6 +365,7 @@ EQUALS_MINUS                            (?i:=\-)
 %x SETVAR_ACTION_WAITING_VARIABLE
 %x SETVAR_ACTION_WAITING_OPERATION
 %x SETVAR_ACTION_WAITING_CONTENT
+%x SETVAR_ACTION_WAITING_CLOSING_QUOTE
 
 %{
   // Code run each time a pattern is matched.
@@ -555,7 +556,12 @@ EQUALS_MINUS                            (?i:=\-)
 }
 
 <SETVAR_ACTION_WAITING_CONTENT>{
-[^,"\n]+                { BEGIN(EXPECTING_ACTIONS); return p::make_FREE_TEXT(yytext, *driver.loc.back()); }
+[^,"\n]+/\'                { BEGIN(SETVAR_ACTION_WAITING_CLOSING_QUOTE); return p::make_FREE_TEXT(yytext, *driver.loc.back()); }
+[^,"\n]+                   { BEGIN(EXPECTING_ACTIONS); return p::make_FREE_TEXT(yytext, *driver.loc.back()); }
+}
+
+<SETVAR_ACTION_WAITING_CLOSING_QUOTE>{
+\'                         { BEGIN(EXPECTING_ACTIONS); }
 }
 
 <FINISH_ACTIONS>{
