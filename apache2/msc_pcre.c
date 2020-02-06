@@ -21,11 +21,15 @@
 static apr_status_t msc_pcre_cleanup(msc_regex_t *regex) {
     if (regex != NULL) {
         if (regex->pe != NULL) {
+            if (((pcre_extra *)regex->pe)->flags & PCRE_EXTRA_EXECUTABLE_JIT) {
+                pcre_free_study(regex->pe);
+            } else {
 #if defined(VERSION_NGINX)
-            pcre_free(regex->pe);
+                pcre_free(regex->pe);
 #else
-            free(regex->pe);
+                free(regex->pe);
 #endif
+            }
             regex->pe = NULL;
         }
         if (regex->re != NULL) {
